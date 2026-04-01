@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Observer Effect: Trust.exe</title>
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      color: white;
+      font-family: Arial;
+      text-align: center;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      margin: auto;
+      border: 2px solid white;
+      background: #111;
+    }
+    #overlay, #gameOver {
+      position: absolute;
+      width: 100%;
+      top: 40%;
+      font-size: 28px;
+    }
+    #gameOver { display: none; }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<h2>👁️ Observer Effect: Trust.exe</h2>
+<p id="msg">Click to Start</p>
+<p id="scoreText">Score: 0 | High Score: 0</p>
+
+<div id="overlay">CLICK TO BEGIN</div>
+
+<div id="gameOver">
+  <div id="gameOverText"></div>
+  <button onclick="restartGame()">Restart</button>
+</div>
+
+<canvas id="gameCanvas" width="700" height="450"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const msg = document.getElementById("msg");
+const overlay = document.getElementById("overlay");
+const gameOverScreen = document.getElementById("gameOver");
+const gameOverText = document.getElementById("gameOverText");
+const scoreText = document.getElementById("scoreText");
+
+let gameStarted = false;
+let isGameOver = false;
+
+let player = { x: 50, y: 200, size: 20, speed: 3 };
+let goal = { x: 650, y: 200, size: 30 };
+
+let greenZone = { x: 200, y: 150, w: 100, h: 100 };
+let redZone = { x: 400, y: 150, w: 100, h: 100 };
+
+let keys = {};
+let interactions = 0;
+let greenSafe = true;
+let shake = 0;
+
+let score = 0;
+let highScore = 0;
+
+// 🔊 SOUND SYSTEM (no files needed)
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(freq, duration) {
+  let osc = audioCtx.createOscillator();
+  let gain = audioCtx.createGain();
+
+  osc.frequency.value = freq;
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+
+  setTimeout(() => osc.stop(), duration * 1000);
+}
+
+// Start game
+document.body.addEventListener("click", () => {
+  if (!gameStarted) {
+    gameStarted = true;
+    overlay.style.display = "none";
+    msg.innerText = "Green is safe. Reach the goal.";
+  }
+});
+
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+function update() {
+  if (!gameStarted || isGameOver) return;
+
+  score += 0.02;
+  scoreText.innerText = `Score: ${Math.floor(score)} | High Score: ${highScore}`;
+
+  // Movement
+  if (keys["ArrowUp"]) player.y -= player.speed;
+  if (keys["ArrowDown"]) player.y += player.speed;
+  if (keys["ArrowLeft"]) player.x -= player.speed;
+  if (keys["ArrowRight"]) player.x += player.speed;
+
+  player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
+  player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+
+  // Zones
+  if (collide(player, greenZone)) {
+    interactions++;
+    if (!greenSafe) triggerGameOver("You trusted green.");
+  }
+
+  if (collide(player, redZone)) {
+    interactions++;
+    if (greenSafe) triggerGameOver("Red was safe.");
+  }
+
+  if (collide(player, goal)) {
+    fakeWin();
+  }
+
+  // Adaptive logic
+  if (interactions > 5) {
+    greenSafe = false;
+    msg.innerText = "You trust too easily.";
+    playSound(200, 0.2);
+  }
+
+  if (interactions > 10) {
+    glitchMessage();
+  }
+
+  if (interactions > 15) {
+    shake = 5;
+    msg.innerText = "The system is watching you.";
+    playSound(100, 0.3);
+  }
+
+  if (interactions > 20) {
+    greenSafe = Math.random() > 0.5;
+  }
+
+  // Difficulty increase
+  if (score > 20) player.speed = 3.5;
+  if (score > 40) player.speed = 4;
+}
+
+function triggerGameOver(reason) {
+  isGameOver = true;
+  playSound(80, 0.5);
+
+  if (score > highScore) highScore = Math.floor(score);
+
+  gameOverText.innerText = `${reason}\nFinal Score: ${Math.floor(score)}`;
+  gameOverScreen.style.display = "block";
+}
+
+function restartGame() {
+  isGameOver = false;
+  gameOverScreen.style.display = "none";
+  player.x = 50;
+  player.y = 200;
+  interactions = 0;
+  greenSafe = true;
+  score = 0;
+  player.speed = 3;
+  msg.innerText = "Green is safe. Reach the goal.";
+}
+
+function fakeWin() {
+  msg.innerText = "YOU WIN 🎉";
+  playSound(600, 0.2);
+
+  setTimeout(() => {
+    msg.innerText = "That was a lie.";
+    playSound(150, 0.4);
+    restartGame();
+  }, 1000);
+}
+
+function glitchMessage() {
+  let texts = [
+    "Nothing is what it seems.",
+    "Stop trusting.",
+    "System failure.",
+    "You are not in control.",
+    "Observation detected."
+  ];
+  msg.innerText = texts[Math.floor(Math.random() * texts.length)];
+}
+
+function collide(a, b) {
+  return a.x < b.x + (b.w || b.size) &&
+         a.x + a.size > b.x &&
+         a.y < b.y + (b.h || b.size) &&
+         a.y + a.size > b.y;
+}
+
+function draw() {
+  ctx.save();
+
+  if (shake > 0) {
+    ctx.translate(Math.random() * shake, Math.random() * shake);
+    shake--;
+  }
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "white";
+  ctx.fillRect(player.x, player.y, player.size, player.size);
+
+  ctx.fillStyle = "green";
+  ctx.fillRect(greenZone.x, greenZone.y, greenZone.w, greenZone.h);
+
+  ctx.fillStyle = "red";
+  ctx.fillRect(redZone.x, redZone.y, redZone.w, redZone.h);
+
+  ctx.fillStyle = "blue";
+  ctx.fillRect(goal.x, goal.y, goal.size, goal.size);
+
+  ctx.restore();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>
