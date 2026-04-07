@@ -7,82 +7,53 @@
       margin: 0;
       background: black;
       color: white;
-      font-family: Arial;
       text-align: center;
-      overflow: hidden;
+      font-family: Arial;
     }
     canvas {
       display: block;
       margin: auto;
-      border: 2px solid white;
       background: #111;
-    }
-    #overlay, #gameOver {
-      position: absolute;
-      width: 100%;
-      top: 40%;
-      font-size: 28px;
-    }
-    #gameOver { display: none; }
-    button {
-      margin-top: 20px;
-      padding: 10px 20px;
-      background: white;
-      border: none;
-      cursor: pointer;
-      font-weight: bold;
+      border: 2px solid white;
     }
   </style>
 </head>
 <body>
 
 <h2>👁️ Observer Effect: Trust.exe</h2>
-<p id="msg">Click to Start</p>
-<p id="scoreText">Score: 0 | High Score: 0</p>
+<p id="msg">Press SPACE to Start</p>
+<p id="scoreText">Score: 0</p>
 
-<div id="overlay">CLICK TO BEGIN</div>
-
-<div id="gameOver">
-  <div id="gameOverText"></div>
-  <button onclick="restartGame()">Restart</button>
-</div>
-
-<canvas id="gameCanvas" width="700" height="450"></canvas>
+<canvas id="gameCanvas" width="600" height="400"></canvas>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const msg = document.getElementById("msg");
-const overlay = document.getElementById("overlay");
-const gameOverScreen = document.getElementById("gameOver");
-const gameOverText = document.getElementById("gameOverText");
 const scoreText = document.getElementById("scoreText");
 
 let gameStarted = false;
 let isGameOver = false;
 
-let player = { x: 50, y: 200, size: 20, speed: 3 };
-let goal = { x: 650, y: 200, size: 30 };
-
-let greenZone = { x: 200, y: 150, w: 100, h: 100 };
-let redZone = { x: 400, y: 150, w: 100, h: 100 };
-
+let player = { x: 100, y: 180, size: 20 };
 let keys = {};
-let interactions = 0;
-let greenSafe = true;
-let shake = 0;
 
+let walls = [];
+let speed = 2.5;
 let score = 0;
-let highScore = 0;
 
-// 🔊 SOUND SYSTEM (no files needed)
+let safeColor, safeCount, maxSafe;
+
+// 🔊 SOUND SYSTEM
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-function playSound(freq, duration) {
-  let osc = audioCtx.createOscillator();
-  let gain = audioCtx.createGain();
+function playSound(freq, duration = 0.15) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
 
   osc.frequency.value = freq;
+  osc.type = "sine";
+
   osc.connect(gain);
   gain.connect(audioCtx.destination);
 
@@ -92,148 +63,125 @@ function playSound(freq, duration) {
   setTimeout(() => osc.stop(), duration * 1000);
 }
 
-// Start game
-document.body.addEventListener("click", () => {
-  if (!gameStarted) {
-    gameStarted = true;
-    overlay.style.display = "none";
-    msg.innerText = "Green is safe. Reach the goal.";
+// 🎮 INPUT
+document.addEventListener("keydown", e => {
+  keys[e.key] = true;
+
+  if (e.code === "Space") {
+    if (!gameStarted) startGame();
+  }
+
+  if (e.key.toLowerCase() === "r") {
+    restartGame();
   }
 });
 
-document.addEventListener("keydown", e => keys[e.key] = true);
 document.addEventListener("keyup", e => keys[e.key] = false);
+
+// START GAME
+function startGame() {
+  gameStarted = true;
+  isGameOver = false;
+
+  safeColor = Math.random() > 0.5 ? "green" : "red";
+  safeCount = 0;
+  maxSafe = safeColor === "green" ? 3 : 1;
+
+  msg.innerText = safeColor.toUpperCase() + " IS SAFE";
+  playSound(500);
+}
+
+// RESTART GAME
+function restartGame() {
+  walls = [];
+  score = 0;
+  player.y = 180;
+  speed = 2.5;
+
+  gameStarted = false;
+  isGameOver = false;
+
+  msg.innerText = "Press SPACE to Start";
+}
+
+// GENERATE WALL
+function generateWall() {
+  walls.push({
+    x: 600,
+    split: Math.random() * 200 + 100,
+    order: Math.random() > 0.5,
+    passed: false
+  });
+}
 
 function update() {
   if (!gameStarted || isGameOver) return;
 
   score += 0.02;
-  scoreText.innerText = `Score: ${Math.floor(score)} | High Score: ${highScore}`;
+  scoreText.innerText = "Score: " + Math.floor(score);
 
-  // Movement
-  if (keys["ArrowUp"]) player.y -= player.speed;
-  if (keys["ArrowDown"]) player.y += player.speed;
-  if (keys["ArrowLeft"]) player.x -= player.speed;
-  if (keys["ArrowRight"]) player.x += player.speed;
+  if (keys["ArrowUp"]) player.y -= 3;
+  if (keys["ArrowDown"]) player.y += 3;
 
-  player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
-  player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+  player.y = Math.max(0, Math.min(380, player.y));
 
-  // Zones
-  if (collide(player, greenZone)) {
-    interactions++;
-    if (!greenSafe) triggerGameOver("You trusted green.");
-  }
+  if (Math.random() < 0.02) generateWall();
 
-  if (collide(player, redZone)) {
-    interactions++;
-    if (greenSafe) triggerGameOver("Red was safe.");
-  }
+  walls.forEach(w => {
+    w.x -= speed;
 
-  if (collide(player, goal)) {
-    fakeWin();
-  }
+    let topColor = w.order ? "green" : "red";
+    let bottomColor = w.order ? "red" : "green";
 
-  // Adaptive logic
-  if (interactions > 5) {
-    greenSafe = false;
-    msg.innerText = "You trust too easily.";
-    playSound(200, 0.2);
-  }
+    if (!w.passed && player.x > w.x) {
+      w.passed = true;
 
-  if (interactions > 10) {
-    glitchMessage();
-  }
+      let chosenColor = player.y < w.split ? topColor : bottomColor;
 
-  if (interactions > 15) {
-    shake = 5;
-    msg.innerText = "The system is watching you.";
-    playSound(100, 0.3);
-  }
+      if (chosenColor === safeColor) {
+        safeCount++;
+        playSound(700); // correct
 
-  if (interactions > 20) {
-    greenSafe = Math.random() > 0.5;
-  }
+        if (safeCount > maxSafe) {
+          gameOver("You believed " + safeColor.toUpperCase());
+        }
+      } else {
+        playSound(300); // neutral pass
+      }
+    }
+  });
 
-  // Difficulty increase
-  if (score > 20) player.speed = 3.5;
-  if (score > 40) player.speed = 4;
+  walls = walls.filter(w => w.x > -50);
+
+  speed = 2.5 + score / 150;
 }
 
-function triggerGameOver(reason) {
+function gameOver(text) {
   isGameOver = true;
-  playSound(80, 0.5);
+  playSound(120, 0.4); // failure
 
-  if (score > highScore) highScore = Math.floor(score);
-
-  gameOverText.innerText = `${reason}\nFinal Score: ${Math.floor(score)}`;
-  gameOverScreen.style.display = "block";
-}
-
-function restartGame() {
-  isGameOver = false;
-  gameOverScreen.style.display = "none";
-  player.x = 50;
-  player.y = 200;
-  interactions = 0;
-  greenSafe = true;
-  score = 0;
-  player.speed = 3;
-  msg.innerText = "Green is safe. Reach the goal.";
-}
-
-function fakeWin() {
-  msg.innerText = "YOU WIN 🎉";
-  playSound(600, 0.2);
-
-  setTimeout(() => {
-    msg.innerText = "That was a lie.";
-    playSound(150, 0.4);
-    restartGame();
-  }, 1000);
-}
-
-function glitchMessage() {
-  let texts = [
-    "Nothing is what it seems.",
-    "Stop trusting.",
-    "System failure.",
-    "You are not in control.",
-    "Observation detected."
-  ];
-  msg.innerText = texts[Math.floor(Math.random() * texts.length)];
-}
-
-function collide(a, b) {
-  return a.x < b.x + (b.w || b.size) &&
-         a.x + a.size > b.x &&
-         a.y < b.y + (b.h || b.size) &&
-         a.y + a.size > b.y;
+  msg.innerText =
+    "Nothing is what it seems.\n" +
+    text +
+    "\nPress R to Restart";
 }
 
 function draw() {
-  ctx.save();
-
-  if (shake > 0) {
-    ctx.translate(Math.random() * shake, Math.random() * shake);
-    shake--;
-  }
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, 600, 400);
 
   ctx.fillStyle = "white";
   ctx.fillRect(player.x, player.y, player.size, player.size);
 
-  ctx.fillStyle = "green";
-  ctx.fillRect(greenZone.x, greenZone.y, greenZone.w, greenZone.h);
+  walls.forEach(w => {
+    let topColor = w.order ? "green" : "red";
+    let bottomColor = w.order ? "red" : "green";
 
-  ctx.fillStyle = "red";
-  ctx.fillRect(redZone.x, redZone.y, redZone.w, redZone.h);
+    ctx.fillStyle = topColor;
+    ctx.fillRect(w.x, 0, 40, w.split);
 
-  ctx.fillStyle = "blue";
-  ctx.fillRect(goal.x, goal.y, goal.size, goal.size);
-
-  ctx.restore();
+    ctx.fillStyle = bottomColor;
+    ctx.fillRect(w.x, w.split, 40, 400);
+  });
 }
 
 function loop() {
